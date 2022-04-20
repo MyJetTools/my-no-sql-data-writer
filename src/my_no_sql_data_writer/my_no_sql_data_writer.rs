@@ -1,7 +1,6 @@
 use flurl::{FlUrl, FlUrlResponse};
+use my_no_sql_server_abstractions::{DataSyncronizationPeriod, MyNoSqlEntity};
 use serde::{de::DeserializeOwned, Serialize};
-
-use crate::{DataSyncronizationPeriod, MyNoSqlEntity};
 
 use super::DataWriterError;
 
@@ -104,7 +103,17 @@ impl FlUrlExt for FlUrl {
     }
 
     fn appen_data_sync_period(self, sync_period: &DataSyncronizationPeriod) -> FlUrl {
-        self.append_query_param("syncPeriod", sync_period.as_html_param_value())
+        let value = match sync_period {
+            DataSyncronizationPeriod::Immediately => "i",
+            DataSyncronizationPeriod::Sec1 => "1",
+            DataSyncronizationPeriod::Sec5 => "5",
+            DataSyncronizationPeriod::Sec15 => "15",
+            DataSyncronizationPeriod::Sec30 => "30",
+            DataSyncronizationPeriod::Min1 => "50",
+            DataSyncronizationPeriod::Asap => "a",
+        };
+
+        self.append_query_param("syncPeriod", value)
     }
 
     fn with_partition_key_as_query_param(self, partition_key: &str) -> FlUrl {
