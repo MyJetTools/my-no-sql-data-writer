@@ -1,6 +1,6 @@
 use flurl::{FlUrl, FlUrlResponse};
 use my_no_sql_server_abstractions::{DataSyncronizationPeriod, MyNoSqlEntity};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use super::DataWriterError;
 
@@ -39,7 +39,8 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
             return Ok(());
         }
 
-        let reason = response.get_body_as_ut8string().await?;
+        let reason = response.receive_body().await?;
+        let reason = String::from_utf8(reason)?;
         return Err(DataWriterError::Error(reason));
     }
 
@@ -56,7 +57,8 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
             return Ok(());
         }
 
-        let reason = response.get_body_as_ut8string().await?;
+        let reason = response.receive_body().await?;
+        let reason = String::from_utf8(reason)?;
         return Err(DataWriterError::Error(reason));
     }
 
@@ -73,8 +75,36 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
             return Ok(());
         }
 
-        let reason = response.get_body_as_ut8string().await?;
+        let reason = response.receive_body().await?;
+        let reason = String::from_utf8(reason)?;
         return Err(DataWriterError::Error(reason));
+    }
+
+    pub async fn get_entity(
+        &self,
+        partition_key: &str,
+        row_key: &str,
+    ) -> Result<Option<TEntity>, DataWriterError> {
+        let mut response = FlUrl::new(self.url.as_str())
+            .append_path_segment(ROW_CONTROLLER)
+            .with_partition_key_as_query_param(partition_key)
+            .with_row_key_as_query_param(row_key)
+            .with_table_name_as_query_param(self.table_name.as_str())
+            .get()
+            .await?;
+
+        if response.get_status_code() == 404 {
+            return Ok(None);
+        }
+
+        check_error(&mut response).await?;
+
+        if is_ok_result(&response) {
+            let entity = deserialize_entity(response.get_body().await?)?;
+            return Ok(Some(entity));
+        }
+
+        return Ok(None);
     }
 }
 
@@ -82,8 +112,69 @@ fn is_ok_result(response: &FlUrlResponse) -> bool {
     response.get_status_code() >= 200 && response.get_status_code() < 300
 }
 
+fn deserialize_entity<TEntity: DeserializeOwned>(src: &[u8]) -> Result<TEntity, DataWriterError> {
+    let src = std::str::from_utf8(src)?;
+    match serde_json::from_str(src) {
+        Ok(result) => Ok(result),
+        Err(err) => {
+            return Err(DataWriterError::Error(format!(
+                "Failed to deserialize entity: {:?}",
+                err
+            )))
+        }
+    }
+}
+
 fn serialize_entity_to_body<TEntity: Serialize>(entity: TEntity) -> Option<Vec<u8>> {
     serde_json::to_string(&entity).unwrap().into_bytes().into()
+}
+
+async fn check_error(response: &mut FlUrlResponse) -> Result<(), DataWriterError> {
+    match response.get_status_code() {
+        400 => {
+            return Err(deserialize_error(response).await?);
+        }
+
+        409 => {
+            return Err(DataWriterError::TableNotFound("".to_string()));
+        }
+        _ => Ok(()),
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct OperationFailHttpContract {
+    pub reason: String,
+    pub message: String,
+}
+
+async fn deserialize_error(
+    response: &mut FlUrlResponse,
+) -> Result<DataWriterError, DataWriterError> {
+    let body = response.get_body().await?;
+
+    let body_as_str = std::str::from_utf8(body)?;
+
+    let result = match serde_json::from_str::<OperationFailHttpContract>(body_as_str) {
+        Ok(fail_contract) => match fail_contract.reason.as_str() {
+            "TableAlreadyExists" => DataWriterError::TableAlreadyExists(fail_contract.message),
+            "TableNotFound" => DataWriterError::TableNotFound(fail_contract.message),
+            "RecordAlreadyExists" => DataWriterError::RecordAlreadyExists(fail_contract.message),
+            "RequieredEntityFieldIsMissing" => {
+                DataWriterError::RequieredEntityFieldIsMissing(fail_contract.message)
+            }
+            "JsonParseFail" => DataWriterError::ServerCouldNotParseJson(fail_contract.message),
+            _ => DataWriterError::Error(format!("Not supported error. {:?}", fail_contract)),
+        },
+        Err(err) => {
+            return Err(DataWriterError::Error(format!(
+                "Failed to deserialize error: {:?}",
+                err
+            )))
+        }
+    };
+
+    Ok(result)
 }
 
 trait FlUrlExt {
