@@ -25,8 +25,21 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
         }
     }
 
+    pub async fn create_table(&self, persist: bool) -> Result<(), DataWriterError> {
+        let mut response = FlUrl::new(self.url.as_str())
+            .append_path_segment("Tables")
+            .append_path_segment("Create")
+            .appen_data_sync_period(&self.sync_period)
+            .with_persist_as_query_param(persist)
+            .with_table_name_as_query_param(self.table_name.as_str())
+            .post(None)
+            .await?;
+
+        create_table_errors_handler(&mut response).await
+    }
+
     pub async fn create_table_if_not_exists(&self, persist: bool) -> Result<(), DataWriterError> {
-        let response = FlUrl::new(self.url.as_str())
+        let mut response = FlUrl::new(self.url.as_str())
             .append_path_segment("Tables")
             .append_path_segment("CreateIfNotExists")
             .appen_data_sync_period(&self.sync_period)
@@ -35,13 +48,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
             .post(None)
             .await?;
 
-        if is_ok_result(&response) {
-            return Ok(());
-        }
-
-        let reason = response.receive_body().await?;
-        let reason = String::from_utf8(reason)?;
-        return Err(DataWriterError::Error(reason));
+        create_table_errors_handler(&mut response).await
     }
 
     pub async fn insert_entity(&self, entity: TEntity) -> Result<(), DataWriterError> {
@@ -142,6 +149,15 @@ async fn check_error(response: &mut FlUrlResponse) -> Result<(), DataWriterError
     }
 }
 
+async fn create_table_errors_handler(response: &mut FlUrlResponse) -> Result<(), DataWriterError> {
+    if is_ok_result(response) {
+        return Ok(());
+    }
+
+    let result = deserialize_error(response).await?;
+
+    Err(result)
+}
 #[derive(Serialize, Deserialize, Debug)]
 pub struct OperationFailHttpContract {
     pub reason: String,
