@@ -1,5 +1,6 @@
 use std::{str::Utf8Error, string::FromUtf8Error};
 
+#[derive(Debug)]
 pub enum DataWriterError {
     TableAlreadyExists(String),
     TableNotFound(String),
