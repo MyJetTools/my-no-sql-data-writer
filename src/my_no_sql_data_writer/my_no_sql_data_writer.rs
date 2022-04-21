@@ -200,7 +200,7 @@ impl FlUrlExt for FlUrl {
             DataSyncronizationPeriod::Sec5 => "5",
             DataSyncronizationPeriod::Sec15 => "15",
             DataSyncronizationPeriod::Sec30 => "30",
-            DataSyncronizationPeriod::Min1 => "50",
+            DataSyncronizationPeriod::Min1 => "60",
             DataSyncronizationPeriod::Asap => "a",
         };
 
