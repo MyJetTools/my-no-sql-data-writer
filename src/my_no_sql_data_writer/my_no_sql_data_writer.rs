@@ -51,7 +51,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
         create_table_errors_handler(&mut response).await
     }
 
-    pub async fn insert_entity(&self, entity: TEntity) -> Result<(), DataWriterError> {
+    pub async fn insert_entity(&self, entity: &TEntity) -> Result<(), DataWriterError> {
         let response = FlUrl::new(self.url.as_str())
             .append_path_segment(ROW_CONTROLLER)
             .append_path_segment("Insert")
@@ -69,7 +69,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
         return Err(DataWriterError::Error(reason));
     }
 
-    pub async fn insert_or_replace_entity(&self, entity: TEntity) -> Result<(), DataWriterError> {
+    pub async fn insert_or_replace_entity(&self, entity: &TEntity) -> Result<(), DataWriterError> {
         let response = FlUrl::new(self.url.as_str())
             .append_path_segment(ROW_CONTROLLER)
             .append_path_segment("InsertOrReplace")
@@ -132,7 +132,7 @@ fn deserialize_entity<TEntity: DeserializeOwned>(src: &[u8]) -> Result<TEntity, 
     }
 }
 
-fn serialize_entity_to_body<TEntity: Serialize>(entity: TEntity) -> Option<Vec<u8>> {
+fn serialize_entity_to_body<TEntity: Serialize>(entity: &TEntity) -> Option<Vec<u8>> {
     serde_json::to_string(&entity).unwrap().into_bytes().into()
 }
 
