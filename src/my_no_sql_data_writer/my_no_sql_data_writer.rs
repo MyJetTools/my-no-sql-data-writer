@@ -5,6 +5,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use super::DataWriterError;
 
 const ROW_CONTROLLER: &str = "Row";
+const BULK_CONTROLLER: &str = "Bulk";
 
 pub struct MyNoSqlDataWriter<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize> {
     url: String,
@@ -101,6 +102,27 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
         return Err(DataWriterError::Error(reason));
     }
 
+    pub async fn bulk_insert_or_replace(
+        &self,
+        entities: &[TEntity],
+    ) -> Result<(), DataWriterError> {
+        let response = FlUrl::new(self.url.as_str())
+            .append_path_segment(BULK_CONTROLLER)
+            .append_path_segment("InsertOrReplace")
+            .appen_data_sync_period(&self.sync_period)
+            .with_table_name_as_query_param(self.table_name.as_str())
+            .post(serialize_entities_to_body(entities))
+            .await?;
+
+        if is_ok_result(&response) {
+            return Ok(());
+        }
+
+        let reason = response.receive_body().await?;
+        let reason = String::from_utf8(reason)?;
+        return Err(DataWriterError::Error(reason));
+    }
+
     pub async fn get_entity(
         &self,
         partition_key: &str,
@@ -147,6 +169,10 @@ fn deserialize_entity<TEntity: DeserializeOwned>(src: &[u8]) -> Result<TEntity, 
 }
 
 fn serialize_entity_to_body<TEntity: Serialize>(entity: &TEntity) -> Option<Vec<u8>> {
+    serde_json::to_string(&entity).unwrap().into_bytes().into()
+}
+
+fn serialize_entities_to_body<TEntity: Serialize>(entity: &[TEntity]) -> Option<Vec<u8>> {
     serde_json::to_string(&entity).unwrap().into_bytes().into()
 }
 
