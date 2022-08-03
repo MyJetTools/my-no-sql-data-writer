@@ -44,7 +44,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
     }
 
     pub async fn create_table(&self) -> Result<(), DataWriterError> {
-        let mut response = FlUrl::new(self.url.as_str())
+        let mut response = FlUrl::new(self.url.as_str(), None)
             .append_path_segment("Tables")
             .append_path_segment("Create")
             .appen_data_sync_period(&self.sync_period)
@@ -67,7 +67,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
     }
 
     pub async fn insert_entity(&self, entity: &TEntity) -> Result<(), DataWriterError> {
-        let response = FlUrl::new(self.url.as_str())
+        let response = FlUrl::new(self.url.as_str(), None)
             .append_path_segment(ROW_CONTROLLER)
             .append_path_segment("Insert")
             .appen_data_sync_period(&self.sync_period)
@@ -85,7 +85,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
     }
 
     pub async fn insert_or_replace_entity(&self, entity: &TEntity) -> Result<(), DataWriterError> {
-        let response = FlUrl::new(self.url.as_str())
+        let response = FlUrl::new(self.url.as_str(), None)
             .append_path_segment(ROW_CONTROLLER)
             .append_path_segment("InsertOrReplace")
             .appen_data_sync_period(&self.sync_period)
@@ -106,7 +106,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
         &self,
         entities: &[TEntity],
     ) -> Result<(), DataWriterError> {
-        let response = FlUrl::new(self.url.as_str())
+        let response = FlUrl::new(self.url.as_str(), None)
             .append_path_segment(BULK_CONTROLLER)
             .append_path_segment("InsertOrReplace")
             .appen_data_sync_period(&self.sync_period)
@@ -128,7 +128,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
         partition_key: &str,
         row_key: &str,
     ) -> Result<Option<TEntity>, DataWriterError> {
-        let mut response = FlUrl::new(self.url.as_str())
+        let mut response = FlUrl::new(self.url.as_str(), None)
             .append_path_segment(ROW_CONTROLLER)
             .with_partition_key_as_query_param(partition_key)
             .with_row_key_as_query_param(row_key)
@@ -282,7 +282,7 @@ async fn create_table_if_not_exists(
     persist: bool,
     sync_period: DataSyncronizationPeriod,
 ) -> Result<(), DataWriterError> {
-    let mut response = FlUrl::new(url.as_str())
+    let mut response = FlUrl::new(url.as_str(), None)
         .append_path_segment("Tables")
         .append_path_segment("CreateIfNotExists")
         .appen_data_sync_period(&sync_period)
