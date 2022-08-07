@@ -149,6 +149,52 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
 
         return Ok(None);
     }
+
+    pub async fn get_by_partition_key(
+        &self,
+        partition_key: &str,
+    ) -> Result<Option<Vec<TEntity>>, DataWriterError> {
+        let mut response = FlUrl::new(self.url.as_str(), None)
+            .append_path_segment(ROW_CONTROLLER)
+            .with_partition_key_as_query_param(partition_key)
+            .with_table_name_as_query_param(self.table_name.as_str())
+            .get()
+            .await?;
+
+        if response.get_status_code() == 404 {
+            return Ok(None);
+        }
+
+        check_error(&mut response).await?;
+
+        if is_ok_result(&response) {
+            let entities = deserialize_entities(response.get_body().await?)?;
+            return Ok(Some(entities));
+        }
+
+        return Ok(None);
+    }
+
+    pub async fn get_all(&self) -> Result<Option<Vec<TEntity>>, DataWriterError> {
+        let mut response = FlUrl::new(self.url.as_str(), None)
+            .append_path_segment(ROW_CONTROLLER)
+            .with_table_name_as_query_param(self.table_name.as_str())
+            .get()
+            .await?;
+
+        if response.get_status_code() == 404 {
+            return Ok(None);
+        }
+
+        check_error(&mut response).await?;
+
+        if is_ok_result(&response) {
+            let entities = deserialize_entities(response.get_body().await?)?;
+            return Ok(Some(entities));
+        }
+
+        return Ok(None);
+    }
 }
 
 fn is_ok_result(response: &FlUrlResponse) -> bool {
@@ -156,6 +202,21 @@ fn is_ok_result(response: &FlUrlResponse) -> bool {
 }
 
 fn deserialize_entity<TEntity: DeserializeOwned>(src: &[u8]) -> Result<TEntity, DataWriterError> {
+    let src = std::str::from_utf8(src)?;
+    match serde_json::from_str(src) {
+        Ok(result) => Ok(result),
+        Err(err) => {
+            return Err(DataWriterError::Error(format!(
+                "Failed to deserialize entity: {:?}",
+                err
+            )))
+        }
+    }
+}
+
+fn deserialize_entities<TEntity: DeserializeOwned>(
+    src: &[u8],
+) -> Result<Vec<TEntity>, DataWriterError> {
     let src = std::str::from_utf8(src)?;
     match serde_json::from_str(src) {
         Ok(result) => Ok(result),
