@@ -223,6 +223,25 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
 
         return Ok(());
     }
+
+    pub async fn clean_partition_and_bulk_insert(
+        &self,
+        partition_key: &str,
+        entities: &[TEntity],
+    ) -> Result<(), DataWriterError> {
+        let mut response = self
+            .get_fl_url()
+            .append_path_segment(BULK_CONTROLLER)
+            .with_table_name_as_query_param(self.table_name.as_str())
+            .appen_data_sync_period(&self.sync_period)
+            .with_partition_key_as_query_param(partition_key)
+            .post(serialize_entities_to_body(entities))
+            .await?;
+
+        check_error(&mut response).await?;
+
+        return Ok(());
+    }
 }
 
 fn is_ok_result(response: &FlUrlResponse) -> bool {
