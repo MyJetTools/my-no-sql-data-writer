@@ -18,6 +18,11 @@ pub struct MyNoSqlDataWriter<TEntity: MyNoSqlEntity + Sync + Send + DeserializeO
 impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
     MyNoSqlDataWriter<TEntity>
 {
+    //To Remove warning of itm
+    pub fn do_not_use_it(&self) -> &Option<TEntity> {
+        &self.itm
+    }
+
     pub fn new(
         url: String,
         table_name: String,
