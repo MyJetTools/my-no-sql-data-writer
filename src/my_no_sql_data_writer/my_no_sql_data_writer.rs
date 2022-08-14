@@ -190,6 +190,34 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
         return Ok(None);
     }
 
+    pub async fn delete_row(
+        &self,
+        partition_key: &str,
+        row_key: &str,
+    ) -> Result<Option<Vec<TEntity>>, DataWriterError> {
+        let mut response = self
+            .get_fl_url()
+            .append_path_segment(ROW_CONTROLLER)
+            .with_partition_key_as_query_param(partition_key)
+            .with_row_key_as_query_param(row_key)
+            .with_table_name_as_query_param(self.table_name.as_str())
+            .delete()
+            .await?;
+
+        if response.get_status_code() == 404 {
+            return Ok(None);
+        }
+
+        check_error(&mut response).await?;
+
+        if is_ok_result(&response) {
+            let entities = deserialize_entity(response.get_body().await?)?;
+            return Ok(Some(entities));
+        }
+
+        return Ok(None);
+    }
+
     pub async fn get_all(&self) -> Result<Option<Vec<TEntity>>, DataWriterError> {
         let mut response = self
             .get_fl_url()
