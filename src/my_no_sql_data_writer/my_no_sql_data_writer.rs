@@ -248,6 +248,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
         let mut response = self
             .get_fl_url()
             .append_path_segment(BULK_CONTROLLER)
+            .append_path_segment("CleanAndBulkInsert")
             .with_table_name_as_query_param(self.table_name.as_str())
             .appen_data_sync_period(&self.sync_period)
             .post(serialize_entities_to_body(entities))
@@ -266,6 +267,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
         let mut response = self
             .get_fl_url()
             .append_path_segment(BULK_CONTROLLER)
+            .append_path_segment("CleanAndBulkInsert")
             .with_table_name_as_query_param(self.table_name.as_str())
             .appen_data_sync_period(&self.sync_period)
             .with_partition_key_as_query_param(partition_key)
