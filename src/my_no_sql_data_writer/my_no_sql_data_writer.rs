@@ -1,5 +1,6 @@
 use flurl::{FlUrl, FlUrlResponse};
 use my_no_sql_server_abstractions::{DataSyncronizationPeriod, MyNoSqlEntity};
+
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use super::DataWriterError;
@@ -318,16 +319,23 @@ fn serialize_entities_to_body<TEntity: Serialize>(entity: &[TEntity]) -> Option<
 }
 
 async fn check_error(response: &mut FlUrlResponse) -> Result<(), DataWriterError> {
-    match response.get_status_code() {
-        400 => {
-            return Err(deserialize_error(response).await?);
-        }
+    let result = match response.get_status_code() {
+        400 => Err(deserialize_error(response).await?),
 
-        409 => {
-            return Err(DataWriterError::TableNotFound("".to_string()));
-        }
+        409 => Err(DataWriterError::TableNotFound("".to_string())),
         _ => Ok(()),
+    };
+
+    if let Err(err) = &result {
+        my_logger::LOGGER.write_log(
+            my_logger::LogLevel::Error,
+            format!("FlUrlRequest to {}", response.url.to_string()),
+            format!("{:?}", err),
+            None,
+        );
     }
+
+    result
 }
 
 async fn create_table_errors_handler(response: &mut FlUrlResponse) -> Result<(), DataWriterError> {
