@@ -195,7 +195,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
         &self,
         partition_key: &str,
         row_key: &str,
-    ) -> Result<Option<Vec<TEntity>>, DataWriterError> {
+    ) -> Result<Option<TEntity>, DataWriterError> {
         let mut response = self
             .get_fl_url()
             .append_path_segment(ROW_CONTROLLER)
@@ -212,8 +212,8 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
         check_error(&mut response).await?;
 
         if is_ok_result(&response) {
-            let entities = deserialize_entity(response.get_body().await?)?;
-            return Ok(Some(entities));
+            let entity = deserialize_entity(response.get_body().await?)?;
+            return Ok(Some(entity));
         }
 
         return Ok(None);
