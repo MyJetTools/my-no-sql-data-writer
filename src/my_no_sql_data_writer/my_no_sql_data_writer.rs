@@ -211,7 +211,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
 
         check_error(&mut response).await?;
 
-        if is_ok_result(&response) {
+        if response.get_status_code() == 200 {
             let entity = deserialize_entity(response.get_body().await?)?;
             return Ok(Some(entity));
         }
