@@ -1,36 +1,65 @@
 use flurl::{FlUrl, FlUrlResponse};
 use my_no_sql_server_abstractions::{DataSyncronizationPeriod, MyNoSqlEntity};
+
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use super::DataWriterError;
 
 const ROW_CONTROLLER: &str = "Row";
+const BULK_CONTROLLER: &str = "Bulk";
 
 pub struct MyNoSqlDataWriter<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize> {
     url: String,
     table_name: String,
     sync_period: DataSyncronizationPeriod,
     itm: Option<TEntity>,
+    persist: bool,
 }
 
 impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
     MyNoSqlDataWriter<TEntity>
 {
-    pub fn new(url: String, table_name: String, sync_period: DataSyncronizationPeriod) -> Self {
+    //To Remove warning of itm
+    pub fn do_not_use_it(&self) -> &Option<TEntity> {
+        &self.itm
+    }
+
+    pub fn new(
+        url: String,
+        table_name: String,
+        auto_create_table: bool,
+        persist: bool,
+        sync_period: DataSyncronizationPeriod,
+    ) -> Self {
+        if auto_create_table {
+            tokio::spawn(create_table_if_not_exists(
+                url.clone(),
+                table_name.clone(),
+                persist,
+                sync_period,
+            ));
+        }
+
         Self {
             url,
             table_name,
             itm: None,
             sync_period,
+            persist,
         }
     }
 
-    pub async fn create_table(&self, persist: bool) -> Result<(), DataWriterError> {
-        let mut response = FlUrl::new(self.url.as_str())
+    fn get_fl_url(&self) -> FlUrl {
+        FlUrl::new(self.url.as_str(), None)
+    }
+
+    pub async fn create_table(&self) -> Result<(), DataWriterError> {
+        let mut response = self
+            .get_fl_url()
             .append_path_segment("Tables")
             .append_path_segment("Create")
             .appen_data_sync_period(&self.sync_period)
-            .with_persist_as_query_param(persist)
+            .with_persist_as_query_param(self.persist)
             .with_table_name_as_query_param(self.table_name.as_str())
             .post(None)
             .await?;
@@ -38,21 +67,19 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
         create_table_errors_handler(&mut response).await
     }
 
-    pub async fn create_table_if_not_exists(&self, persist: bool) -> Result<(), DataWriterError> {
-        let mut response = FlUrl::new(self.url.as_str())
-            .append_path_segment("Tables")
-            .append_path_segment("CreateIfNotExists")
-            .appen_data_sync_period(&self.sync_period)
-            .with_persist_as_query_param(persist)
-            .with_table_name_as_query_param(self.table_name.as_str())
-            .post(None)
-            .await?;
-
-        create_table_errors_handler(&mut response).await
+    pub async fn create_table_if_not_exists(&self) -> Result<(), DataWriterError> {
+        create_table_if_not_exists(
+            self.url.clone(),
+            self.table_name.to_string(),
+            self.persist,
+            self.sync_period,
+        )
+        .await
     }
 
-    pub async fn insert_entity(&self, entity: TEntity) -> Result<(), DataWriterError> {
-        let response = FlUrl::new(self.url.as_str())
+    pub async fn insert_entity(&self, entity: &TEntity) -> Result<(), DataWriterError> {
+        let response = self
+            .get_fl_url()
             .append_path_segment(ROW_CONTROLLER)
             .append_path_segment("Insert")
             .appen_data_sync_period(&self.sync_period)
@@ -69,8 +96,9 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
         return Err(DataWriterError::Error(reason));
     }
 
-    pub async fn insert_or_replace_entity(&self, entity: TEntity) -> Result<(), DataWriterError> {
-        let response = FlUrl::new(self.url.as_str())
+    pub async fn insert_or_replace_entity(&self, entity: &TEntity) -> Result<(), DataWriterError> {
+        let response = self
+            .get_fl_url()
             .append_path_segment(ROW_CONTROLLER)
             .append_path_segment("InsertOrReplace")
             .appen_data_sync_period(&self.sync_period)
@@ -87,12 +115,35 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
         return Err(DataWriterError::Error(reason));
     }
 
+    pub async fn bulk_insert_or_replace(
+        &self,
+        entities: &[TEntity],
+    ) -> Result<(), DataWriterError> {
+        let response = self
+            .get_fl_url()
+            .append_path_segment(BULK_CONTROLLER)
+            .append_path_segment("InsertOrReplace")
+            .appen_data_sync_period(&self.sync_period)
+            .with_table_name_as_query_param(self.table_name.as_str())
+            .post(serialize_entities_to_body(entities))
+            .await?;
+
+        if is_ok_result(&response) {
+            return Ok(());
+        }
+
+        let reason = response.receive_body().await?;
+        let reason = String::from_utf8(reason)?;
+        return Err(DataWriterError::Error(reason));
+    }
+
     pub async fn get_entity(
         &self,
         partition_key: &str,
         row_key: &str,
     ) -> Result<Option<TEntity>, DataWriterError> {
-        let mut response = FlUrl::new(self.url.as_str())
+        let mut response = self
+            .get_fl_url()
             .append_path_segment(ROW_CONTROLLER)
             .with_partition_key_as_query_param(partition_key)
             .with_row_key_as_query_param(row_key)
@@ -113,6 +164,120 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
 
         return Ok(None);
     }
+
+    pub async fn get_by_partition_key(
+        &self,
+        partition_key: &str,
+    ) -> Result<Option<Vec<TEntity>>, DataWriterError> {
+        let mut response = self
+            .get_fl_url()
+            .append_path_segment(ROW_CONTROLLER)
+            .with_partition_key_as_query_param(partition_key)
+            .with_table_name_as_query_param(self.table_name.as_str())
+            .get()
+            .await?;
+
+        if response.get_status_code() == 404 {
+            return Ok(None);
+        }
+
+        check_error(&mut response).await?;
+
+        if is_ok_result(&response) {
+            let entities = deserialize_entities(response.get_body().await?)?;
+            return Ok(Some(entities));
+        }
+
+        return Ok(None);
+    }
+
+    pub async fn delete_row(
+        &self,
+        partition_key: &str,
+        row_key: &str,
+    ) -> Result<Option<TEntity>, DataWriterError> {
+        let mut response = self
+            .get_fl_url()
+            .append_path_segment(ROW_CONTROLLER)
+            .with_partition_key_as_query_param(partition_key)
+            .with_row_key_as_query_param(row_key)
+            .with_table_name_as_query_param(self.table_name.as_str())
+            .delete()
+            .await?;
+
+        if response.get_status_code() == 404 {
+            return Ok(None);
+        }
+
+        check_error(&mut response).await?;
+
+        if response.get_status_code() == 200 {
+            let entity = deserialize_entity(response.get_body().await?)?;
+            return Ok(Some(entity));
+        }
+
+        return Ok(None);
+    }
+
+    pub async fn get_all(&self) -> Result<Option<Vec<TEntity>>, DataWriterError> {
+        let mut response = self
+            .get_fl_url()
+            .append_path_segment(ROW_CONTROLLER)
+            .with_table_name_as_query_param(self.table_name.as_str())
+            .get()
+            .await?;
+
+        if response.get_status_code() == 404 {
+            return Ok(None);
+        }
+
+        check_error(&mut response).await?;
+
+        if is_ok_result(&response) {
+            let entities = deserialize_entities(response.get_body().await?)?;
+            return Ok(Some(entities));
+        }
+
+        return Ok(None);
+    }
+
+    pub async fn clean_table_and_bulk_insert(
+        &self,
+        entities: &[TEntity],
+    ) -> Result<(), DataWriterError> {
+        let mut response = self
+            .get_fl_url()
+            .append_path_segment(BULK_CONTROLLER)
+            .append_path_segment("CleanAndBulkInsert")
+            .with_table_name_as_query_param(self.table_name.as_str())
+            .appen_data_sync_period(&self.sync_period)
+            .post(serialize_entities_to_body(entities))
+            .await?;
+
+        check_error(&mut response).await?;
+
+        return Ok(());
+    }
+
+    pub async fn clean_partition_and_bulk_insert(
+        &self,
+        partition_key: &str,
+        entities: &[TEntity],
+    ) -> Result<(), DataWriterError> {
+        let mut response = self
+            .get_fl_url()
+            .append_path_segment(BULK_CONTROLLER)
+            .append_path_segment("CleanAndBulkInsert")
+            .with_table_name_as_query_param(self.table_name.as_str())
+            .appen_data_sync_period(&self.sync_period)
+            .with_partition_key_as_query_param(partition_key)
+            .post(serialize_entities_to_body(entities))
+            .await?;
+
+        check_error(&mut response).await?;
+
+        return Ok(());
+    }
 }
 
 fn is_ok_result(response: &FlUrlResponse) -> bool {
@@ -132,21 +297,47 @@ fn deserialize_entity<TEntity: DeserializeOwned>(src: &[u8]) -> Result<TEntity, 
     }
 }
 
-fn serialize_entity_to_body<TEntity: Serialize>(entity: TEntity) -> Option<Vec<u8>> {
+fn deserialize_entities<TEntity: DeserializeOwned>(
+    src: &[u8],
+) -> Result<Vec<TEntity>, DataWriterError> {
+    let src = std::str::from_utf8(src)?;
+    match serde_json::from_str(src) {
+        Ok(result) => Ok(result),
+        Err(err) => {
+            return Err(DataWriterError::Error(format!(
+                "Failed to deserialize entity: {:?}",
+                err
+            )))
+        }
+    }
+}
+
+fn serialize_entity_to_body<TEntity: Serialize>(entity: &TEntity) -> Option<Vec<u8>> {
+    serde_json::to_string(&entity).unwrap().into_bytes().into()
+}
+
+fn serialize_entities_to_body<TEntity: Serialize>(entity: &[TEntity]) -> Option<Vec<u8>> {
     serde_json::to_string(&entity).unwrap().into_bytes().into()
 }
 
 async fn check_error(response: &mut FlUrlResponse) -> Result<(), DataWriterError> {
-    match response.get_status_code() {
-        400 => {
-            return Err(deserialize_error(response).await?);
-        }
+    let result = match response.get_status_code() {
+        400 => Err(deserialize_error(response).await?),
 
-        409 => {
-            return Err(DataWriterError::TableNotFound("".to_string()));
-        }
+        409 => Err(DataWriterError::TableNotFound("".to_string())),
         _ => Ok(()),
+    };
+
+    if let Err(err) = &result {
+        my_logger::LOGGER.write_log(
+            my_logger::LogLevel::Error,
+            format!("FlUrlRequest to {}", response.url.to_string()),
+            format!("{:?}", err),
+            None,
+        );
     }
+
+    result
 }
 
 async fn create_table_errors_handler(response: &mut FlUrlResponse) -> Result<(), DataWriterError> {
@@ -234,4 +425,22 @@ impl FlUrlExt for FlUrl {
         let value = if persist { "1" } else { "0" };
         self.append_query_param("persist", value)
     }
+}
+
+async fn create_table_if_not_exists(
+    url: String,
+    table_name: String,
+    persist: bool,
+    sync_period: DataSyncronizationPeriod,
+) -> Result<(), DataWriterError> {
+    let mut response = FlUrl::new(url.as_str(), None)
+        .append_path_segment("Tables")
+        .append_path_segment("CreateIfNotExists")
+        .appen_data_sync_period(&sync_period)
+        .with_persist_as_query_param(persist)
+        .with_table_name_as_query_param(table_name.as_str())
+        .post(None)
+        .await?;
+
+    create_table_errors_handler(&mut response).await
 }
