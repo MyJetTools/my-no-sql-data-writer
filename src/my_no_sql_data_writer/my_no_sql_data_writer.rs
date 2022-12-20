@@ -10,7 +10,6 @@ const BULK_CONTROLLER: &str = "Bulk";
 
 pub struct MyNoSqlDataWriter<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize> {
     url: String,
-    table_name: String,
     sync_period: DataSyncronizationPeriod,
     itm: Option<TEntity>,
     persist: bool,
@@ -26,7 +25,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
 
     pub fn new(
         url: String,
-        table_name: String,
+
         auto_create_table: bool,
         persist: bool,
         sync_period: DataSyncronizationPeriod,
@@ -34,7 +33,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
         if auto_create_table {
             tokio::spawn(create_table_if_not_exists(
                 url.clone(),
-                table_name.clone(),
+                TEntity::TABLE_NAME,
                 persist,
                 sync_period,
             ));
@@ -42,7 +41,6 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
 
         Self {
             url,
-            table_name,
             itm: None,
             sync_period,
             persist,
@@ -60,7 +58,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
             .append_path_segment("Create")
             .appen_data_sync_period(&self.sync_period)
             .with_persist_as_query_param(self.persist)
-            .with_table_name_as_query_param(self.table_name.as_str())
+            .with_table_name_as_query_param(TEntity::TABLE_NAME)
             .post(None)
             .await?;
 
@@ -70,7 +68,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
     pub async fn create_table_if_not_exists(&self) -> Result<(), DataWriterError> {
         create_table_if_not_exists(
             self.url.clone(),
-            self.table_name.to_string(),
+            TEntity::TABLE_NAME,
             self.persist,
             self.sync_period,
         )
@@ -83,7 +81,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
             .append_path_segment(ROW_CONTROLLER)
             .append_path_segment("Insert")
             .appen_data_sync_period(&self.sync_period)
-            .with_table_name_as_query_param(self.table_name.as_str())
+            .with_table_name_as_query_param(TEntity::TABLE_NAME)
             .post(serialize_entity_to_body(entity))
             .await?;
 
@@ -102,7 +100,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
             .append_path_segment(ROW_CONTROLLER)
             .append_path_segment("InsertOrReplace")
             .appen_data_sync_period(&self.sync_period)
-            .with_table_name_as_query_param(self.table_name.as_str())
+            .with_table_name_as_query_param(TEntity::TABLE_NAME)
             .post(serialize_entity_to_body(entity))
             .await?;
 
@@ -124,7 +122,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
             .append_path_segment(BULK_CONTROLLER)
             .append_path_segment("InsertOrReplace")
             .appen_data_sync_period(&self.sync_period)
-            .with_table_name_as_query_param(self.table_name.as_str())
+            .with_table_name_as_query_param(TEntity::TABLE_NAME)
             .post(serialize_entities_to_body(entities))
             .await?;
 
@@ -147,7 +145,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
             .append_path_segment(ROW_CONTROLLER)
             .with_partition_key_as_query_param(partition_key)
             .with_row_key_as_query_param(row_key)
-            .with_table_name_as_query_param(self.table_name.as_str())
+            .with_table_name_as_query_param(TEntity::TABLE_NAME)
             .get()
             .await?;
 
@@ -173,7 +171,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
             .get_fl_url()
             .append_path_segment(ROW_CONTROLLER)
             .with_partition_key_as_query_param(partition_key)
-            .with_table_name_as_query_param(self.table_name.as_str())
+            .with_table_name_as_query_param(TEntity::TABLE_NAME)
             .get()
             .await?;
 
@@ -201,7 +199,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
             .append_path_segment(ROW_CONTROLLER)
             .with_partition_key_as_query_param(partition_key)
             .with_row_key_as_query_param(row_key)
-            .with_table_name_as_query_param(self.table_name.as_str())
+            .with_table_name_as_query_param(TEntity::TABLE_NAME)
             .delete()
             .await?;
 
@@ -223,7 +221,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
         let mut response = self
             .get_fl_url()
             .append_path_segment(ROW_CONTROLLER)
-            .with_table_name_as_query_param(self.table_name.as_str())
+            .with_table_name_as_query_param(TEntity::TABLE_NAME)
             .get()
             .await?;
 
@@ -249,7 +247,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
             .get_fl_url()
             .append_path_segment(BULK_CONTROLLER)
             .append_path_segment("CleanAndBulkInsert")
-            .with_table_name_as_query_param(self.table_name.as_str())
+            .with_table_name_as_query_param(TEntity::TABLE_NAME)
             .appen_data_sync_period(&self.sync_period)
             .post(serialize_entities_to_body(entities))
             .await?;
@@ -268,7 +266,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
             .get_fl_url()
             .append_path_segment(BULK_CONTROLLER)
             .append_path_segment("CleanAndBulkInsert")
-            .with_table_name_as_query_param(self.table_name.as_str())
+            .with_table_name_as_query_param(TEntity::TABLE_NAME)
             .appen_data_sync_period(&self.sync_period)
             .with_partition_key_as_query_param(partition_key)
             .post(serialize_entities_to_body(entities))
@@ -429,7 +427,7 @@ impl FlUrlExt for FlUrl {
 
 async fn create_table_if_not_exists(
     url: String,
-    table_name: String,
+    table_name: &'static str,
     persist: bool,
     sync_period: DataSyncronizationPeriod,
 ) -> Result<(), DataWriterError> {
@@ -438,7 +436,7 @@ async fn create_table_if_not_exists(
         .append_path_segment("CreateIfNotExists")
         .appen_data_sync_period(&sync_period)
         .with_persist_as_query_param(persist)
-        .with_table_name_as_query_param(table_name.as_str())
+        .with_table_name_as_query_param(table_name)
         .post(None)
         .await?;
 
