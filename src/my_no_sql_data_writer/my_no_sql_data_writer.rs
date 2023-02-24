@@ -3,7 +3,7 @@ use my_no_sql_server_abstractions::{DataSyncronizationPeriod, MyNoSqlEntity};
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-use super::DataWriterError;
+use super::{DataWriterError, UpdateReadStatistics};
 
 const ROW_CONTROLLER: &str = "Row";
 const BULK_CONTROLLER: &str = "Bulk";
@@ -48,7 +48,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
     }
 
     fn get_fl_url(&self) -> FlUrl {
-        FlUrl::new(self.url.as_str(), None)
+        FlUrl::new(self.url.as_str())
     }
 
     pub async fn create_table(&self) -> Result<(), DataWriterError> {
@@ -139,15 +139,20 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
         &self,
         partition_key: &str,
         row_key: &str,
+        update_read_statistics: Option<UpdateReadStatistics>,
     ) -> Result<Option<TEntity>, DataWriterError> {
-        let mut response = self
+        let mut request = self
             .get_fl_url()
             .append_path_segment(ROW_CONTROLLER)
             .with_partition_key_as_query_param(partition_key)
             .with_row_key_as_query_param(row_key)
-            .with_table_name_as_query_param(TEntity::TABLE_NAME)
-            .get()
-            .await?;
+            .with_table_name_as_query_param(TEntity::TABLE_NAME);
+
+        if let Some(update_read_statistics) = update_read_statistics {
+            request = update_read_statistics.fill_fields(request);
+        }
+
+        let mut response = request.get().await?;
 
         if response.get_status_code() == 404 {
             return Ok(None);
@@ -166,14 +171,19 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
     pub async fn get_by_partition_key(
         &self,
         partition_key: &str,
+        update_read_statistics: Option<UpdateReadStatistics>,
     ) -> Result<Option<Vec<TEntity>>, DataWriterError> {
-        let mut response = self
+        let mut request = self
             .get_fl_url()
             .append_path_segment(ROW_CONTROLLER)
             .with_partition_key_as_query_param(partition_key)
-            .with_table_name_as_query_param(TEntity::TABLE_NAME)
-            .get()
-            .await?;
+            .with_table_name_as_query_param(TEntity::TABLE_NAME);
+
+        if let Some(update_read_statistics) = update_read_statistics {
+            request = update_read_statistics.fill_fields(request);
+        }
+
+        let mut response = request.get().await?;
 
         if response.get_status_code() == 404 {
             return Ok(None);
@@ -457,7 +467,7 @@ async fn create_table_if_not_exists(
     persist: bool,
     sync_period: DataSyncronizationPeriod,
 ) -> Result<(), DataWriterError> {
-    let mut response = FlUrl::new(url.as_str(), None)
+    let mut response = FlUrl::new(url.as_str())
         .append_path_segment("Tables")
         .append_path_segment("CreateIfNotExists")
         .appen_data_sync_period(&sync_period)
