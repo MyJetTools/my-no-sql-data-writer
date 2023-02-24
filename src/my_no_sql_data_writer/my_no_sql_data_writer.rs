@@ -8,11 +8,38 @@ use super::{DataWriterError, UpdateReadStatistics};
 const ROW_CONTROLLER: &str = "Row";
 const BULK_CONTROLLER: &str = "Bulk";
 
+pub struct CreateTableParams {
+    pub persist: bool,
+    pub max_partitions_amount: Option<usize>,
+    pub max_rows_per_partition_amount: Option<usize>,
+}
+
+impl CreateTableParams {
+    pub fn populate_params(&self, mut fl_url: FlUrl) -> FlUrl {
+        if let Some(max_partitions_amount) = self.max_partitions_amount {
+            fl_url = fl_url
+                .append_query_param_string("maxPartitionsAmount", max_partitions_amount.to_string())
+        };
+
+        if let Some(max_rows_per_partition_amount) = self.max_rows_per_partition_amount {
+            fl_url = fl_url.append_query_param_string(
+                "maxRowsPerPartitionAmount",
+                max_rows_per_partition_amount.to_string(),
+            )
+        };
+
+        if !self.persist {
+            fl_url = fl_url.append_query_param("persist", "false");
+        };
+
+        fl_url
+    }
+}
+
 pub struct MyNoSqlDataWriter<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize> {
     url: String,
     sync_period: DataSyncronizationPeriod,
     itm: Option<TEntity>,
-    persist: bool,
 }
 
 impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
@@ -25,16 +52,14 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
 
     pub fn new(
         url: String,
-
-        auto_create_table: bool,
-        persist: bool,
+        auto_create_table_params: Option<CreateTableParams>,
         sync_period: DataSyncronizationPeriod,
     ) -> Self {
-        if auto_create_table {
+        if let Some(create_table_params) = auto_create_table_params {
             tokio::spawn(create_table_if_not_exists(
                 url.clone(),
                 TEntity::TABLE_NAME,
-                persist,
+                create_table_params,
                 sync_period,
             ));
         }
@@ -43,7 +68,6 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
             url,
             itm: None,
             sync_period,
-            persist,
         }
     }
 
@@ -51,25 +75,29 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
         FlUrl::new(self.url.as_str())
     }
 
-    pub async fn create_table(&self) -> Result<(), DataWriterError> {
-        let mut response = self
+    pub async fn create_table(&self, params: CreateTableParams) -> Result<(), DataWriterError> {
+        let fl_url = self
             .get_fl_url()
             .append_path_segment("Tables")
             .append_path_segment("Create")
-            .appen_data_sync_period(&self.sync_period)
-            .with_persist_as_query_param(self.persist)
             .with_table_name_as_query_param(TEntity::TABLE_NAME)
-            .post(None)
-            .await?;
+            .appen_data_sync_period(&self.sync_period);
+
+        let fl_url = params.populate_params(fl_url);
+
+        let mut response = fl_url.post(None).await?;
 
         create_table_errors_handler(&mut response).await
     }
 
-    pub async fn create_table_if_not_exists(&self) -> Result<(), DataWriterError> {
+    pub async fn create_table_if_not_exists(
+        &self,
+        params: CreateTableParams,
+    ) -> Result<(), DataWriterError> {
         create_table_if_not_exists(
             self.url.clone(),
             TEntity::TABLE_NAME,
-            self.persist,
+            params,
             self.sync_period,
         )
         .await
@@ -464,17 +492,18 @@ impl FlUrlExt for FlUrl {
 async fn create_table_if_not_exists(
     url: String,
     table_name: &'static str,
-    persist: bool,
+    params: CreateTableParams,
     sync_period: DataSyncronizationPeriod,
 ) -> Result<(), DataWriterError> {
-    let mut response = FlUrl::new(url.as_str())
+    let fl_url = FlUrl::new(url.as_str())
         .append_path_segment("Tables")
         .append_path_segment("CreateIfNotExists")
         .appen_data_sync_period(&sync_period)
-        .with_persist_as_query_param(persist)
-        .with_table_name_as_query_param(table_name)
-        .post(None)
-        .await?;
+        .with_table_name_as_query_param(table_name);
+
+    let fl_url = params.populate_params(fl_url);
+
+    let mut response = fl_url.post(None).await?;
 
     create_table_errors_handler(&mut response).await
 }
