@@ -8,7 +8,7 @@ pub enum DataWriterError {
     TableNotFound(String),
     RecordAlreadyExists(String),
     RecordIsChanged(String),
-    RequieredEntityFieldIsMissing(String),
+    RequiredEntityFieldIsMissing(String),
     ServerCouldNotParseJson(String),
     FromUtf8Error(FromUtf8Error),
     Utf8Error(Utf8Error),

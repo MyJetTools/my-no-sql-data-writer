@@ -1,5 +1,5 @@
 use flurl::{FlUrl, FlUrlResponse};
-use my_no_sql_server_abstractions::{DataSyncronizationPeriod, MyNoSqlEntity};
+use my_no_sql_server_abstractions::{DataSynchronizationPeriod, MyNoSqlEntity};
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
@@ -39,7 +39,7 @@ impl CreateTableParams {
 
 pub struct MyNoSqlDataWriter<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize> {
     url: String,
-    sync_period: DataSyncronizationPeriod,
+    sync_period: DataSynchronizationPeriod,
     itm: Option<TEntity>,
 }
 
@@ -54,7 +54,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
     pub fn new(
         url: String,
         auto_create_table_params: Option<CreateTableParams>,
-        sync_period: DataSyncronizationPeriod,
+        sync_period: DataSynchronizationPeriod,
     ) -> Self {
         if let Some(create_table_params) = auto_create_table_params {
             tokio::spawn(create_table_if_not_exists(
@@ -82,7 +82,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
             .append_path_segment("Tables")
             .append_path_segment("Create")
             .with_table_name_as_query_param(TEntity::TABLE_NAME)
-            .appen_data_sync_period(&self.sync_period);
+            .append_data_sync_period(&self.sync_period);
 
         let fl_url = params.populate_params(fl_url);
 
@@ -109,7 +109,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
             .get_fl_url()
             .append_path_segment(ROW_CONTROLLER)
             .append_path_segment("Insert")
-            .appen_data_sync_period(&self.sync_period)
+            .append_data_sync_period(&self.sync_period)
             .with_table_name_as_query_param(TEntity::TABLE_NAME)
             .post(serialize_entity_to_body(entity))
             .await?;
@@ -128,7 +128,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
             .get_fl_url()
             .append_path_segment(ROW_CONTROLLER)
             .append_path_segment("InsertOrReplace")
-            .appen_data_sync_period(&self.sync_period)
+            .append_data_sync_period(&self.sync_period)
             .with_table_name_as_query_param(TEntity::TABLE_NAME)
             .post(serialize_entity_to_body(entity))
             .await?;
@@ -150,7 +150,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
             .get_fl_url()
             .append_path_segment(BULK_CONTROLLER)
             .append_path_segment("InsertOrReplace")
-            .appen_data_sync_period(&self.sync_period)
+            .append_data_sync_period(&self.sync_period)
             .with_table_name_as_query_param(TEntity::TABLE_NAME)
             .post(serialize_entities_to_body(entities))
             .await?;
@@ -331,7 +331,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
             .append_path_segment(BULK_CONTROLLER)
             .append_path_segment("CleanAndBulkInsert")
             .with_table_name_as_query_param(TEntity::TABLE_NAME)
-            .appen_data_sync_period(&self.sync_period)
+            .append_data_sync_period(&self.sync_period)
             .post(serialize_entities_to_body(entities))
             .await?;
 
@@ -350,7 +350,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
             .append_path_segment(BULK_CONTROLLER)
             .append_path_segment("CleanAndBulkInsert")
             .with_table_name_as_query_param(TEntity::TABLE_NAME)
-            .appen_data_sync_period(&self.sync_period)
+            .append_data_sync_period(&self.sync_period)
             .with_partition_key_as_query_param(partition_key)
             .post(serialize_entities_to_body(entities))
             .await?;
@@ -448,8 +448,8 @@ async fn deserialize_error(
             "TableAlreadyExists" => DataWriterError::TableAlreadyExists(fail_contract.message),
             "TableNotFound" => DataWriterError::TableNotFound(fail_contract.message),
             "RecordAlreadyExists" => DataWriterError::RecordAlreadyExists(fail_contract.message),
-            "RequieredEntityFieldIsMissing" => {
-                DataWriterError::RequieredEntityFieldIsMissing(fail_contract.message)
+            "RequiredEntityFieldIsMissing" => {
+                DataWriterError::RequiredEntityFieldIsMissing(fail_contract.message)
             }
             "JsonParseFail" => DataWriterError::ServerCouldNotParseJson(fail_contract.message),
             _ => DataWriterError::Error(format!("Not supported error. {:?}", fail_contract)),
@@ -468,7 +468,7 @@ async fn deserialize_error(
 trait FlUrlExt {
     fn with_table_name_as_query_param(self, table_name: &str) -> FlUrl;
 
-    fn appen_data_sync_period(self, sync_period: &DataSyncronizationPeriod) -> FlUrl;
+    fn append_data_sync_period(self, sync_period: &DataSynchronizationPeriod) -> FlUrl;
 
     fn with_partition_key_as_query_param(self, partition_key: &str) -> FlUrl;
     fn with_partition_keys_as_query_param(self, partition_keys: &[&str]) -> FlUrl;
@@ -482,15 +482,15 @@ impl FlUrlExt for FlUrl {
         self.append_query_param("tableName", table_name)
     }
 
-    fn appen_data_sync_period(self, sync_period: &DataSyncronizationPeriod) -> FlUrl {
+    fn append_data_sync_period(self, sync_period: &DataSynchronizationPeriod) -> FlUrl {
         let value = match sync_period {
-            DataSyncronizationPeriod::Immediately => "i",
-            DataSyncronizationPeriod::Sec1 => "1",
-            DataSyncronizationPeriod::Sec5 => "5",
-            DataSyncronizationPeriod::Sec15 => "15",
-            DataSyncronizationPeriod::Sec30 => "30",
-            DataSyncronizationPeriod::Min1 => "60",
-            DataSyncronizationPeriod::Asap => "a",
+            DataSynchronizationPeriod::Immediately => "i",
+            DataSynchronizationPeriod::Sec1 => "1",
+            DataSynchronizationPeriod::Sec5 => "5",
+            DataSynchronizationPeriod::Sec15 => "15",
+            DataSynchronizationPeriod::Sec30 => "30",
+            DataSynchronizationPeriod::Min1 => "60",
+            DataSynchronizationPeriod::Asap => "a",
         };
 
         self.append_query_param("syncPeriod", value)
@@ -521,12 +521,12 @@ async fn create_table_if_not_exists(
     url: String,
     table_name: &'static str,
     params: CreateTableParams,
-    sync_period: DataSyncronizationPeriod,
+    sync_period: DataSynchronizationPeriod,
 ) -> Result<(), DataWriterError> {
     let fl_url = FlUrl::new(url.as_str())
         .append_path_segment("Tables")
         .append_path_segment("CreateIfNotExists")
-        .appen_data_sync_period(&sync_period)
+        .append_data_sync_period(&sync_period)
         .with_table_name_as_query_param(table_name);
 
     let fl_url = params.populate_params(fl_url);
