@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use flurl::{FlUrl, FlUrlResponse};
 use my_no_sql_server_abstractions::{DataSynchronizationPeriod, MyNoSqlEntity};
 
@@ -345,7 +343,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
     pub async fn clean_partition_and_bulk_insert(
         &self,
         partition_key: &str,
-        entities: Vec<TEntity>,
+        entities: &[TEntity],
     ) -> Result<(), DataWriterError> {
         let mut response = self
             .get_fl_url()
@@ -354,7 +352,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
             .with_table_name_as_query_param(TEntity::TABLE_NAME)
             .append_data_sync_period(&self.sync_period)
             .with_partition_key_as_query_param(partition_key)
-            .post(serialize_entities_as_hash_map_to_body(entities))
+            .post(serialize_entities_to_body(entities))
             .await?;
 
         check_error(&mut response).await?;
@@ -399,25 +397,8 @@ fn serialize_entity_to_body<TEntity: Serialize>(entity: &TEntity) -> Option<Vec<
     serde_json::to_string(&entity).unwrap().into_bytes().into()
 }
 
-fn serialize_entities_to_body<TEntity: Serialize>(entity: &[TEntity]) -> Option<Vec<u8>> {
-    serde_json::to_string(&entity).unwrap().into_bytes().into()
-}
-
-fn serialize_entities_as_hash_map_to_body(
-    entities: Vec<impl MyNoSqlEntity + Serialize>,
-) -> Option<Vec<u8>> {
-    let mut hash_map = HashMap::new();
-
-    for entity in entities {
-        let partition_key = entity.get_partition_key();
-        if !hash_map.contains_key(partition_key) {
-            hash_map.insert(partition_key.to_string(), Vec::new());
-        }
-
-        hash_map.get_mut(partition_key).unwrap().push(entity);
-    }
-
-    serde_json::to_string(&hash_map)
+fn serialize_entities_to_body<TEntity: Serialize>(entities: &[TEntity]) -> Option<Vec<u8>> {
+    serde_json::to_string(&entities)
         .unwrap()
         .into_bytes()
         .into()
