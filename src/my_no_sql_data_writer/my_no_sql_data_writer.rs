@@ -6,6 +6,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use super::{DataWriterError, UpdateReadStatistics};
 
 const ROW_CONTROLLER: &str = "Row";
+const ROWS_CONTROLLER: &str = "Rows";
 const BULK_CONTROLLER: &str = "Bulk";
 
 pub struct CreateTableParams {
@@ -281,6 +282,24 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
         return Ok(None);
     }
 
+    pub async fn delete_partitions(&self, partition_keys: &[&str]) -> Result<(), DataWriterError> {
+        let mut response = self
+            .get_fl_url()
+            .append_path_segment(ROWS_CONTROLLER)
+            .with_table_name_as_query_param(TEntity::TABLE_NAME)
+            .with_partition_keys_as_query_param(partition_keys)
+            .delete()
+            .await?;
+
+        if response.get_status_code() == 404 {
+            return Ok(());
+        }
+
+        check_error(&mut response).await?;
+
+        return Ok(());
+    }
+
     pub async fn get_all(&self) -> Result<Option<Vec<TEntity>>, DataWriterError> {
         let mut response = self
             .get_fl_url()
@@ -452,6 +471,7 @@ trait FlUrlExt {
     fn appen_data_sync_period(self, sync_period: &DataSyncronizationPeriod) -> FlUrl;
 
     fn with_partition_key_as_query_param(self, partition_key: &str) -> FlUrl;
+    fn with_partition_keys_as_query_param(self, partition_keys: &[&str]) -> FlUrl;
     fn with_row_key_as_query_param(self, partition_key: &str) -> FlUrl;
 
     fn with_persist_as_query_param(self, persist: bool) -> FlUrl;
@@ -478,6 +498,14 @@ impl FlUrlExt for FlUrl {
 
     fn with_partition_key_as_query_param(self, partition_key: &str) -> FlUrl {
         self.append_query_param("partitionKey", partition_key)
+    }
+
+    fn with_partition_keys_as_query_param(self, partition_keys: &[&str]) -> FlUrl {
+        let mut s = self;
+        for partition_key in partition_keys {
+            s = s.append_query_param("partitionKey", partition_key);
+        }
+        s
     }
 
     fn with_row_key_as_query_param(self, row_key: &str) -> FlUrl {
