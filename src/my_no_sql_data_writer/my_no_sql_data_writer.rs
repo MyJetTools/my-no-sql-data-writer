@@ -413,11 +413,10 @@ async fn check_error(response: &mut FlUrlResponse) -> Result<(), DataWriterError
     };
 
     if let Err(err) = &result {
-        my_logger::LOGGER.write_log(
-            my_logger::LogLevel::Error,
+        my_logger::LOGGER.write_error(
             format!("FlUrlRequest to {}", response.url.to_string()),
             format!("{:?}", err),
-            None,
+            None.into(),
         );
     }
 
@@ -537,4 +536,59 @@ async fn create_table_if_not_exists(
     let mut response = fl_url.post(None).await?;
 
     create_table_errors_handler(&mut response).await
+}
+
+#[cfg(test)]
+mod tests {
+    use my_no_sql_server_abstractions::MyNoSqlEntity;
+    use serde::Serialize;
+
+    #[derive(Debug, Serialize)]
+    #[serde(rename_all = "PascalCase")]
+    struct TestEntity {
+        partition_key: String,
+        row_key: String,
+    }
+
+    impl MyNoSqlEntity for TestEntity {
+        const TABLE_NAME: &'static str = "test";
+
+        fn get_partition_key(&self) -> &str {
+            &self.partition_key
+        }
+
+        fn get_row_key(&self) -> &str {
+            &self.row_key
+        }
+
+        fn get_time_stamp(&self) -> i64 {
+            0
+        }
+    }
+
+    #[test]
+    fn test() {
+        let entities = vec![
+            TestEntity {
+                partition_key: "1".to_string(),
+                row_key: "1".to_string(),
+            },
+            TestEntity {
+                partition_key: "1".to_string(),
+                row_key: "2".to_string(),
+            },
+            TestEntity {
+                partition_key: "2".to_string(),
+                row_key: "1".to_string(),
+            },
+            TestEntity {
+                partition_key: "2".to_string(),
+                row_key: "2".to_string(),
+            },
+        ];
+
+        let as_json = super::serialize_entities_to_body(&entities).unwrap();
+
+        println!("{}", std::str::from_utf8(&as_json).unwrap());
+    }
 }
