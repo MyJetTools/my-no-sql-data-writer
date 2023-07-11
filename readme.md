@@ -1,6 +1,6 @@
 # How to use MyNoSqlDataWriter
 
-First - setup settings model and settings reader. Create https://github.com/MyJetTools/my-settings-reader is recommended
+First - setup the settings model and settings reader. Create https://github.com/MyJetTools/my-settings-reader is recommended.
 
 ```yaml
 [dependencies]
@@ -9,9 +9,10 @@ my-settings-reader = { tag = "xxx", git = "https://github.com/MyJetTools/my-sett
 ] }
 
 async-trait = "*"
-flurl = { tag = "0.3.0", git = "https://github.com/MyJetTools/fl-url.git" }
+flurl = { tag = "xxx", git = "https://github.com/MyJetTools/fl-url.git" }
 serde = { version = "*", features = ["derive"] }
 serde_json = "*"
+tokio = { version = "*", features = ["full"] }
 ```
 
 ```rust
