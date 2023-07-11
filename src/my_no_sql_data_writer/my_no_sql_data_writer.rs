@@ -1,7 +1,11 @@
+use std::sync::Arc;
+
 use flurl::{FlUrl, FlUrlResponse};
 use my_no_sql_server_abstractions::{DataSynchronizationPeriod, MyNoSqlEntity};
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+
+use crate::MyNoSqlWriterSettings;
 
 use super::{DataWriterError, UpdateReadStatistics};
 
@@ -18,19 +22,21 @@ pub struct CreateTableParams {
 impl CreateTableParams {
     pub fn populate_params(&self, mut fl_url: FlUrl) -> FlUrl {
         if let Some(max_partitions_amount) = self.max_partitions_amount {
-            fl_url = fl_url
-                .append_query_param_string("maxPartitionsAmount", max_partitions_amount.to_string())
+            fl_url = fl_url.append_query_param(
+                "maxPartitionsAmount",
+                Some(max_partitions_amount.to_string()),
+            )
         };
 
         if let Some(max_rows_per_partition_amount) = self.max_rows_per_partition_amount {
-            fl_url = fl_url.append_query_param_string(
+            fl_url = fl_url.append_query_param(
                 "maxRowsPerPartitionAmount",
-                max_rows_per_partition_amount.to_string(),
+                Some(max_rows_per_partition_amount.to_string()),
             )
         };
 
         if !self.persist {
-            fl_url = fl_url.append_query_param("persist", "false");
+            fl_url = fl_url.append_query_param("persist", Some("false"));
         };
 
         fl_url
@@ -38,7 +44,7 @@ impl CreateTableParams {
 }
 
 pub struct MyNoSqlDataWriter<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize> {
-    url: String,
+    settings: Arc<dyn MyNoSqlWriterSettings + Send + Sync + 'static>,
     sync_period: DataSynchronizationPeriod,
     itm: Option<TEntity>,
 }
@@ -52,13 +58,13 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
     }
 
     pub fn new(
-        url: String,
+        settings: Arc<dyn MyNoSqlWriterSettings + Send + Sync + 'static>,
         auto_create_table_params: Option<CreateTableParams>,
         sync_period: DataSynchronizationPeriod,
     ) -> Self {
         if let Some(create_table_params) = auto_create_table_params {
             tokio::spawn(create_table_if_not_exists(
-                url.clone(),
+                settings.clone(),
                 TEntity::TABLE_NAME,
                 create_table_params,
                 sync_period,
@@ -66,19 +72,21 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
         }
 
         Self {
-            url,
+            settings,
             itm: None,
             sync_period,
         }
     }
 
-    fn get_fl_url(&self) -> FlUrl {
-        FlUrl::new(self.url.as_str())
+    async fn get_fl_url(&self) -> FlUrl {
+        let url = self.settings.get_url().await;
+        FlUrl::new(url)
     }
 
     pub async fn create_table(&self, params: CreateTableParams) -> Result<(), DataWriterError> {
         let fl_url = self
             .get_fl_url()
+            .await
             .append_path_segment("Tables")
             .append_path_segment("Create")
             .with_table_name_as_query_param(TEntity::TABLE_NAME)
@@ -96,7 +104,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
         params: CreateTableParams,
     ) -> Result<(), DataWriterError> {
         create_table_if_not_exists(
-            self.url.clone(),
+            self.settings.clone(),
             TEntity::TABLE_NAME,
             params,
             self.sync_period,
@@ -107,6 +115,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
     pub async fn insert_entity(&self, entity: &TEntity) -> Result<(), DataWriterError> {
         let response = self
             .get_fl_url()
+            .await
             .append_path_segment(ROW_CONTROLLER)
             .append_path_segment("Insert")
             .append_data_sync_period(&self.sync_period)
@@ -126,6 +135,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
     pub async fn insert_or_replace_entity(&self, entity: &TEntity) -> Result<(), DataWriterError> {
         let response = self
             .get_fl_url()
+            .await
             .append_path_segment(ROW_CONTROLLER)
             .append_path_segment("InsertOrReplace")
             .append_data_sync_period(&self.sync_period)
@@ -148,6 +158,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
     ) -> Result<(), DataWriterError> {
         let response = self
             .get_fl_url()
+            .await
             .append_path_segment(BULK_CONTROLLER)
             .append_path_segment("InsertOrReplace")
             .append_data_sync_period(&self.sync_period)
@@ -172,6 +183,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
     ) -> Result<Option<TEntity>, DataWriterError> {
         let mut request = self
             .get_fl_url()
+            .await
             .append_path_segment(ROW_CONTROLLER)
             .with_partition_key_as_query_param(partition_key)
             .with_row_key_as_query_param(row_key)
@@ -204,6 +216,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
     ) -> Result<Option<Vec<TEntity>>, DataWriterError> {
         let mut request = self
             .get_fl_url()
+            .await
             .append_path_segment(ROW_CONTROLLER)
             .with_partition_key_as_query_param(partition_key)
             .with_table_name_as_query_param(TEntity::TABLE_NAME);
@@ -234,6 +247,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
     ) -> Result<Option<Vec<TEntity>>, DataWriterError> {
         let mut response = self
             .get_fl_url()
+            .await
             .append_path_segment(ROW_CONTROLLER)
             .with_row_key_as_query_param(row_key)
             .with_table_name_as_query_param(TEntity::TABLE_NAME)
@@ -261,6 +275,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
     ) -> Result<Option<TEntity>, DataWriterError> {
         let mut response = self
             .get_fl_url()
+            .await
             .append_path_segment(ROW_CONTROLLER)
             .with_partition_key_as_query_param(partition_key)
             .with_row_key_as_query_param(row_key)
@@ -285,6 +300,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
     pub async fn delete_partitions(&self, partition_keys: &[&str]) -> Result<(), DataWriterError> {
         let mut response = self
             .get_fl_url()
+            .await
             .append_path_segment(ROWS_CONTROLLER)
             .with_table_name_as_query_param(TEntity::TABLE_NAME)
             .with_partition_keys_as_query_param(partition_keys)
@@ -303,6 +319,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
     pub async fn get_all(&self) -> Result<Option<Vec<TEntity>>, DataWriterError> {
         let mut response = self
             .get_fl_url()
+            .await
             .append_path_segment(ROW_CONTROLLER)
             .with_table_name_as_query_param(TEntity::TABLE_NAME)
             .get()
@@ -328,6 +345,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
     ) -> Result<(), DataWriterError> {
         let mut response = self
             .get_fl_url()
+            .await
             .append_path_segment(BULK_CONTROLLER)
             .append_path_segment("CleanAndBulkInsert")
             .with_table_name_as_query_param(TEntity::TABLE_NAME)
@@ -347,6 +365,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
     ) -> Result<(), DataWriterError> {
         let mut response = self
             .get_fl_url()
+            .await
             .append_path_segment(BULK_CONTROLLER)
             .append_path_segment("CleanAndBulkInsert")
             .with_table_name_as_query_param(TEntity::TABLE_NAME)
@@ -481,7 +500,7 @@ trait FlUrlExt {
 
 impl FlUrlExt for FlUrl {
     fn with_table_name_as_query_param(self, table_name: &str) -> FlUrl {
-        self.append_query_param("tableName", table_name)
+        self.append_query_param("tableName", Some(table_name))
     }
 
     fn append_data_sync_period(self, sync_period: &DataSynchronizationPeriod) -> FlUrl {
@@ -495,36 +514,37 @@ impl FlUrlExt for FlUrl {
             DataSynchronizationPeriod::Asap => "a",
         };
 
-        self.append_query_param("syncPeriod", value)
+        self.append_query_param("syncPeriod", Some(value))
     }
 
     fn with_partition_key_as_query_param(self, partition_key: &str) -> FlUrl {
-        self.append_query_param("partitionKey", partition_key)
+        self.append_query_param("partitionKey", Some(partition_key))
     }
 
     fn with_partition_keys_as_query_param(self, partition_keys: &[&str]) -> FlUrl {
         let mut s = self;
         for partition_key in partition_keys {
-            s = s.append_query_param("partitionKey", partition_key);
+            s = s.append_query_param("partitionKey", Some(*partition_key));
         }
         s
     }
 
     fn with_row_key_as_query_param(self, row_key: &str) -> FlUrl {
-        self.append_query_param("rowKey", row_key)
+        self.append_query_param("rowKey", Some(row_key))
     }
     fn with_persist_as_query_param(self, persist: bool) -> FlUrl {
         let value = if persist { "1" } else { "0" };
-        self.append_query_param("persist", value)
+        self.append_query_param("persist", Some(value))
     }
 }
 
 async fn create_table_if_not_exists(
-    url: String,
+    settings: Arc<dyn MyNoSqlWriterSettings + Send + Sync + 'static>,
     table_name: &'static str,
     params: CreateTableParams,
     sync_period: DataSynchronizationPeriod,
 ) -> Result<(), DataWriterError> {
+    let url = settings.get_url().await;
     let fl_url = FlUrl::new(url.as_str())
         .append_path_segment("Tables")
         .append_path_segment("CreateIfNotExists")

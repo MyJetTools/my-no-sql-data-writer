@@ -20,7 +20,7 @@ impl UpdateReadStatistics {
 
         if let Some(update_partition_expiration_moment) = self.update_partition_expiration_moment {
             if let Some(update_partition_expiration_moment) = update_partition_expiration_moment {
-                fl_url_request = fl_url_request.with_header_val_string(
+                fl_url_request = fl_url_request.with_header(
                     "setPartitionExpirationTime",
                     update_partition_expiration_moment.to_rfc3339(),
                 );
@@ -31,7 +31,7 @@ impl UpdateReadStatistics {
 
         if let Some(update_rows_expiration_moment) = self.update_rows_expiration_moment {
             if let Some(update_rows_expiration_moment) = update_rows_expiration_moment {
-                fl_url_request = fl_url_request.with_header_val_string(
+                fl_url_request = fl_url_request.with_header(
                     "setRowsExpirationTime",
                     update_rows_expiration_moment.to_rfc3339(),
                 );
