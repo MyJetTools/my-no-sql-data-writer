@@ -2,6 +2,7 @@
 
 First - setup the settings model and settings reader. Create https://github.com/MyJetTools/my-settings-reader is recommended.
 
+#### Cargo.toml
 ```yaml
 [dependencies]
 my-settings-reader = { tag = "xxx", git = "https://github.com/MyJetTools/my-settings-reader.git", features = [
@@ -15,6 +16,7 @@ serde_json = "*"
 tokio = { version = "*", features = ["full"] }
 ```
 
+#### settings.rs
 ```rust
 use my_no_sql_data_writer::MyNoSqlWriterSettings;
 use serde::{Deserialize, Serialize};
@@ -38,6 +40,8 @@ impl MyNoSqlWriterSettings for SettingsReader {
 
 Now MyNoSqlDataWriter can be created
 
+
+#### main.rs
 ```rust
 
 #[tokio::main]
