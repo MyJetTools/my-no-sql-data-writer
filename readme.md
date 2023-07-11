@@ -52,8 +52,7 @@ async fn main() {
             persist: true,
             max_partitions_amount: None,
             max_rows_per_partition_amount: None,
-        }
-            .into(),
+        }.into(),
         my_no_sql_server_abstractions::DataSynchronizationPeriod::Sec5,
     );
 }
