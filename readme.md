@@ -38,7 +38,7 @@ impl MyNoSqlWriterSettings for SettingsReader {
 ```
 
 
-Now MyNoSqlDataWriter can be created
+Then MyNoSqlDataWriter can be created.
 
 
 #### main.rs
