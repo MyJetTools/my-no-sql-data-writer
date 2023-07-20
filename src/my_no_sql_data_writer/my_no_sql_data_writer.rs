@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use flurl::{FlUrl, FlUrlResponse};
+use my_logger::LogEventCtx;
 use my_no_sql_server_abstractions::{DataSynchronizationPeriod, MyNoSqlEntity};
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -84,9 +85,10 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
     }
 
     pub async fn create_table(&self, params: CreateTableParams) -> Result<(), DataWriterError> {
-        let fl_url = self
-            .get_fl_url()
-            .await
+        let url = self.settings.get_url().await;
+        let fl_url = FlUrl::new(url.as_str());
+
+        let fl_url = fl_url
             .append_path_segment("Tables")
             .append_path_segment("Create")
             .with_table_name_as_query_param(TEntity::TABLE_NAME)
@@ -96,7 +98,7 @@ impl<TEntity: MyNoSqlEntity + Sync + Send + DeserializeOwned + Serialize>
 
         let mut response = fl_url.post(None).await?;
 
-        create_table_errors_handler(&mut response).await
+        create_table_errors_handler(&mut response, "create_table", url.as_str()).await
     }
 
     pub async fn create_table_if_not_exists(
@@ -442,12 +444,22 @@ async fn check_error(response: &mut FlUrlResponse) -> Result<(), DataWriterError
     result
 }
 
-async fn create_table_errors_handler(response: &mut FlUrlResponse) -> Result<(), DataWriterError> {
+async fn create_table_errors_handler(
+    response: &mut FlUrlResponse,
+    process_name: &'static str,
+    url: &str,
+) -> Result<(), DataWriterError> {
     if is_ok_result(response) {
         return Ok(());
     }
 
     let result = deserialize_error(response).await?;
+
+    my_logger::LOGGER.write_error(
+        process_name,
+        format!("{:?}", result),
+        LogEventCtx::new().add("URL", url),
+    );
 
     Err(result)
 }
@@ -555,7 +567,7 @@ async fn create_table_if_not_exists(
 
     let mut response = fl_url.post(None).await?;
 
-    create_table_errors_handler(&mut response).await
+    create_table_errors_handler(&mut response, "create_table_if_not_exists", url.as_str()).await
 }
 
 #[cfg(test)]
