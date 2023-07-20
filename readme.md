@@ -1,7 +1,8 @@
 # How to use MyNoSqlDataWriter
 
-First - setup settings model and settings reader. Create https://github.com/MyJetTools/my-settings-reader is recommended
+First - setup the settings model and settings reader. Create https://github.com/MyJetTools/my-settings-reader is recommended.
 
+#### Cargo.toml
 ```yaml
 [dependencies]
 my-settings-reader = { tag = "xxx", git = "https://github.com/MyJetTools/my-settings-reader.git", features = [
@@ -9,11 +10,13 @@ my-settings-reader = { tag = "xxx", git = "https://github.com/MyJetTools/my-sett
 ] }
 
 async-trait = "*"
-flurl = { tag = "0.3.0", git = "https://github.com/MyJetTools/fl-url.git" }
+flurl = { tag = "xxx", git = "https://github.com/MyJetTools/fl-url.git" }
 serde = { version = "*", features = ["derive"] }
 serde_json = "*"
+tokio = { version = "*", features = ["full"] }
 ```
 
+#### settings.rs
 ```rust
 use my_no_sql_data_writer::MyNoSqlWriterSettings;
 use serde::{Deserialize, Serialize};
@@ -35,8 +38,10 @@ impl MyNoSqlWriterSettings for SettingsReader {
 ```
 
 
-Now MyNoSqlDataWriter can be created
+Then MyNoSqlDataWriter can be created.
 
+
+#### main.rs
 ```rust
 
 #[tokio::main]
@@ -51,8 +56,7 @@ async fn main() {
             persist: true,
             max_partitions_amount: None,
             max_rows_per_partition_amount: None,
-        }
-            .into(),
+        }.into(),
         my_no_sql_server_abstractions::DataSynchronizationPeriod::Sec5,
     );
 }
